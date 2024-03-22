@@ -2,8 +2,11 @@
 use anyhow::anyhow;
 use anyhow::Context;
 use std::collections::HashMap;
+use std::env;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::path::PathBuf;
+use std::sync::Arc;
 use std::thread;
 
 struct HttpRequest {
@@ -94,13 +97,13 @@ impl HttpResponse {
 }
 
 trait RequestHandler {
-    fn handle_request(&self, request: &HttpRequest) -> HttpResponse;
+    fn handle_request(&self, request: &HttpRequest, dir: Arc<Option<String>>) -> HttpResponse;
 }
 
 struct EchoHandler;
 
 impl RequestHandler for EchoHandler {
-    fn handle_request(&self, request: &HttpRequest) -> HttpResponse {
+    fn handle_request(&self, request: &HttpRequest, _: Arc<Option<String>>) -> HttpResponse {
         let body = request.path.strip_prefix("/echo/").unwrap_or_default();
         let headers: HashMap<String, String> = [
             ("Content-Type".to_string(), "text/plain".to_string()),
@@ -114,7 +117,7 @@ impl RequestHandler for EchoHandler {
 struct UserAgentHandler;
 
 impl RequestHandler for UserAgentHandler {
-    fn handle_request(&self, request: &HttpRequest) -> HttpResponse {
+    fn handle_request(&self, request: &HttpRequest, _: Arc<Option<String>>) -> HttpResponse {
         let unknown = "Unknown".to_string();
         let user_agent = request.headers.get("User-Agent").unwrap_or(&unknown);
         let headers: HashMap<String, String> = [
@@ -130,7 +133,7 @@ impl RequestHandler for UserAgentHandler {
 struct SuccessHandler;
 
 impl RequestHandler for SuccessHandler {
-    fn handle_request(&self, _: &HttpRequest) -> HttpResponse {
+    fn handle_request(&self, _: &HttpRequest, _: Arc<Option<String>>) -> HttpResponse {
         let headers: HashMap<String, String> =
             [("Content-Type".to_string(), "text/plain".to_string())].into();
         HttpResponse::new(200, headers, "")
@@ -140,28 +143,68 @@ impl RequestHandler for SuccessHandler {
 struct NotFoundHandler;
 
 impl RequestHandler for NotFoundHandler {
-    fn handle_request(&self, _: &HttpRequest) -> HttpResponse {
+    fn handle_request(&self, _: &HttpRequest, _: Arc<Option<String>>) -> HttpResponse {
         let headers: HashMap<String, String> =
             [("Content-Type".to_string(), "text/plain".to_string())].into();
         HttpResponse::new(404, headers, "")
     }
 }
 
+struct FileHander;
+
+impl RequestHandler for FileHander {
+    fn handle_request(&self, request: &HttpRequest, dir: Arc<Option<String>>) -> HttpResponse {
+        let file_name = request.path.strip_prefix("/files/").unwrap_or_default();
+        let fallback = "".to_string();
+        let dir = dir.as_deref().unwrap_or(&fallback);
+        let path = PathBuf::from(dir).join(file_name);
+        let data = std::fs::read_to_string(path);
+
+        match data {
+            Ok(data) => {
+                let headers: HashMap<String, String> = [
+                    (
+                        "Content-Type".to_string(),
+                        "application/octet-stream".to_string(),
+                    ),
+                    ("Content-Length".to_string(), data.len().to_string()),
+                ]
+                .into();
+                HttpResponse::new(200, headers, &data)
+            }
+            Err(_) => {
+                let headers: HashMap<String, String> =
+                    [("Content-Type".to_string(), "text/plain".to_string())].into();
+                HttpResponse::new(404, headers, "")
+            }
+        }
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     let listener = TcpListener::bind("127.0.0.1:4221").unwrap();
+    let args: Vec<_> = env::args().collect();
+    let dir = args
+        .iter()
+        .position(|arg| arg == "--directory")
+        .and_then(|idx| args.get(idx + 1).cloned());
+    let dir = Arc::new(dir);
 
     for stream in listener.incoming() {
+        let dir_arc = Arc::clone(&dir);
         thread::spawn(move || match stream {
             Ok(mut stream) => {
                 let request = HttpRequest::try_from(&mut stream).unwrap();
                 let response = if request.path.starts_with("/echo") {
-                    EchoHandler.handle_request(&request)
+                    EchoHandler.handle_request(&request, dir_arc)
                 } else if request.path == "/user-agent" {
-                    UserAgentHandler.handle_request(&request)
+                    UserAgentHandler.handle_request(&request, dir_arc)
+                } else if request.path.starts_with("/files") {
+                    FileHander.handle_request(&request, dir_arc)
                 } else if request.path == "/" {
-                    SuccessHandler.handle_request(&request)
+                    SuccessHandler.handle_request(&request, dir_arc)
                 } else {
-                    NotFoundHandler.handle_request(&request)
+                    NotFoundHandler.handle_request(&request, dir_arc)
                 };
 
                 stream
