@@ -4,6 +4,7 @@ use anyhow::Context;
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::thread;
 
 struct HttpRequest {
     path: String,
@@ -118,9 +119,9 @@ fn main() -> anyhow::Result<()> {
     let listener = TcpListener::bind("127.0.0.1:4221").unwrap();
 
     for stream in listener.incoming() {
-        match stream {
+        thread::spawn(move || match stream {
             Ok(mut stream) => {
-                let request = HttpRequest::try_from(&mut stream)?;
+                let request = HttpRequest::try_from(&mut stream).unwrap();
                 let response = if request.path.starts_with("/echo") {
                     EchoHandler.handle_request(&request)
                 } else if request.path == "/user-agent" {
@@ -131,12 +132,13 @@ fn main() -> anyhow::Result<()> {
 
                 stream
                     .write_all(response.to_string().as_bytes())
-                    .context("Write response to stream")?;
+                    .context("Write response to stream")
+                    .unwrap();
             }
             Err(e) => {
                 println!("error: {}", e);
             }
-        }
+        });
     }
 
     Ok(())
