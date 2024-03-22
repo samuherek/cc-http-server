@@ -116,18 +116,14 @@ struct UserAgentHandler;
 impl RequestHandler for UserAgentHandler {
     fn handle_request(&self, request: &HttpRequest) -> HttpResponse {
         let unknown = "Unknown".to_string();
-        let user_agent = request
-            .headers
-            .get("User-Agent")
-            .unwrap_or(&unknown)
-            .to_string();
+        let user_agent = request.headers.get("User-Agent").unwrap_or(&unknown);
         let headers: HashMap<String, String> = [
             ("Content-Type".to_string(), "text/plain".to_string()),
             ("Content-Length".to_string(), user_agent.len().to_string()),
-            ("User-Agent".to_string(), user_agent),
+            ("User-Agent".to_string(), user_agent.to_string()),
         ]
         .into();
-        HttpResponse::new(200, headers, "")
+        HttpResponse::new(200, headers, user_agent)
     }
 }
 
