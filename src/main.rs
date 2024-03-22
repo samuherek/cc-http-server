@@ -104,7 +104,7 @@ impl RequestHandler for EchoHandler {
         let body = request.path.strip_prefix("/echo/").unwrap_or_default();
         let headers: HashMap<String, String> = [
             ("Content-Type".to_string(), "text/plain".to_string()),
-            ("Content-Lenght".to_string(), body.len().to_string()),
+            ("Content-Length".to_string(), body.len().to_string()),
         ]
         .into();
         HttpResponse::new(200, headers, body)
