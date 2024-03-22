@@ -60,26 +60,35 @@ impl TryFrom<&mut TcpStream> for HttpRequest {
 
 struct HttpResponse {
     status_code: u16,
-    status_message: String,
+    headers: HashMap<String, String>,
     body: String,
 }
 
 impl HttpResponse {
-    fn new(status_code: u16, status_message: &str, body: &str) -> Self {
+    fn new(status_code: u16, headers: HashMap<String, String>, body: &str) -> Self {
         HttpResponse {
             status_code,
-            status_message: status_message.to_string(),
+            headers,
             body: body.to_string(),
         }
     }
 
     fn to_string(&self) -> String {
+        let status_message = match self.status_code {
+            200 => "OK",
+            404 => "Not Found",
+            _ => "Internal error",
+        };
+        let headers = self
+            .headers
+            .iter()
+            .map(|(key, val)| format!("{}: {}", key, val))
+            .collect::<Vec<_>>()
+            .join("\r\n");
+
         format!(
-            "HTTP/1.1 {} {}\r\nContent-Length: {}\r\n\r\n{}",
-            self.status_code,
-            self.status_message,
-            self.body.len(),
-            self.body
+            "HTTP/1.1 {} {}\r\n{}\r\n\r\n{}",
+            self.status_code, status_message, headers, self.body
         )
     }
 }
@@ -93,7 +102,12 @@ struct EchoHandler;
 impl RequestHandler for EchoHandler {
     fn handle_request(&self, request: &HttpRequest) -> HttpResponse {
         let body = request.path.strip_prefix("/echo/").unwrap_or_default();
-        HttpResponse::new(200, "OK", body)
+        let headers: HashMap<String, String> = [
+            ("Content-Type".to_string(), "text".to_string()),
+            ("Content-Lenght".to_string(), body.len().to_string()),
+        ]
+        .into();
+        HttpResponse::new(200, headers, body)
     }
 }
 
@@ -102,8 +116,18 @@ struct UserAgentHandler;
 impl RequestHandler for UserAgentHandler {
     fn handle_request(&self, request: &HttpRequest) -> HttpResponse {
         let unknown = "Unknown".to_string();
-        let user_agent = request.headers.get("User-Agent").unwrap_or(&unknown);
-        HttpResponse::new(200, "OK", user_agent)
+        let user_agent = request
+            .headers
+            .get("User-Agent")
+            .unwrap_or(&unknown)
+            .to_string();
+        let headers: HashMap<String, String> = [
+            ("Content-Type".to_string(), "text".to_string()),
+            ("Content-Lenght".to_string(), user_agent.len().to_string()),
+            ("User-Agent".to_string(), user_agent),
+        ]
+        .into();
+        HttpResponse::new(200, headers, "")
     }
 }
 
@@ -111,7 +135,9 @@ struct SuccessHandler;
 
 impl RequestHandler for SuccessHandler {
     fn handle_request(&self, _: &HttpRequest) -> HttpResponse {
-        HttpResponse::new(200, "OK", "")
+        let headers: HashMap<String, String> =
+            [("Content-Type".to_string(), "text".to_string())].into();
+        HttpResponse::new(200, headers, "")
     }
 }
 
@@ -119,7 +145,9 @@ struct NotFoundHandler;
 
 impl RequestHandler for NotFoundHandler {
     fn handle_request(&self, _: &HttpRequest) -> HttpResponse {
-        HttpResponse::new(404, "Not Found", "")
+        let headers: HashMap<String, String> =
+            [("Content-Type".to_string(), "text".to_string())].into();
+        HttpResponse::new(404, headers, "")
     }
 }
 
