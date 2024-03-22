@@ -8,8 +8,8 @@ use std::thread;
 
 struct HttpRequest {
     path: String,
-    method: String,
-    version: String,
+    _method: String,
+    _version: String,
     headers: HashMap<String, String>,
 }
 
@@ -51,8 +51,8 @@ impl TryFrom<&mut TcpStream> for HttpRequest {
 
         Ok(HttpRequest {
             path: path.to_string(),
-            method: method.to_string(),
-            version: version.to_string(),
+            _method: method.to_string(),
+            _version: version.to_string(),
             headers,
         })
     }
@@ -107,6 +107,14 @@ impl RequestHandler for UserAgentHandler {
     }
 }
 
+struct SuccessHandler;
+
+impl RequestHandler for SuccessHandler {
+    fn handle_request(&self, _: &HttpRequest) -> HttpResponse {
+        HttpResponse::new(200, "OK", "")
+    }
+}
+
 struct NotFoundHandler;
 
 impl RequestHandler for NotFoundHandler {
@@ -126,6 +134,8 @@ fn main() -> anyhow::Result<()> {
                     EchoHandler.handle_request(&request)
                 } else if request.path == "/user-agent" {
                     UserAgentHandler.handle_request(&request)
+                } else if request.path == "/" {
+                    SuccessHandler.handle_request(&request)
                 } else {
                     NotFoundHandler.handle_request(&request)
                 };
