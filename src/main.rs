@@ -123,7 +123,7 @@ impl RequestHandler for UserAgentHandler {
             .to_string();
         let headers: HashMap<String, String> = [
             ("Content-Type".to_string(), "text/plain".to_string()),
-            ("Content-Lenght".to_string(), user_agent.len().to_string()),
+            ("Content-Length".to_string(), user_agent.len().to_string()),
             ("User-Agent".to_string(), user_agent),
         ]
         .into();
