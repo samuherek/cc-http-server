@@ -103,7 +103,7 @@ impl RequestHandler for EchoHandler {
     fn handle_request(&self, request: &HttpRequest) -> HttpResponse {
         let body = request.path.strip_prefix("/echo/").unwrap_or_default();
         let headers: HashMap<String, String> = [
-            ("Content-Type".to_string(), "text".to_string()),
+            ("Content-Type".to_string(), "text/plain".to_string()),
             ("Content-Lenght".to_string(), body.len().to_string()),
         ]
         .into();
@@ -122,7 +122,6 @@ impl RequestHandler for UserAgentHandler {
             .unwrap_or(&unknown)
             .to_string();
         let headers: HashMap<String, String> = [
-            ("Content-Type".to_string(), "text".to_string()),
             ("Content-Lenght".to_string(), user_agent.len().to_string()),
             ("User-Agent".to_string(), user_agent),
         ]
@@ -136,7 +135,7 @@ struct SuccessHandler;
 impl RequestHandler for SuccessHandler {
     fn handle_request(&self, _: &HttpRequest) -> HttpResponse {
         let headers: HashMap<String, String> =
-            [("Content-Type".to_string(), "text".to_string())].into();
+            [("Content-Type".to_string(), "text/plain".to_string())].into();
         HttpResponse::new(200, headers, "")
     }
 }
@@ -146,7 +145,7 @@ struct NotFoundHandler;
 impl RequestHandler for NotFoundHandler {
     fn handle_request(&self, _: &HttpRequest) -> HttpResponse {
         let headers: HashMap<String, String> =
-            [("Content-Type".to_string(), "text".to_string())].into();
+            [("Content-Type".to_string(), "text/plain".to_string())].into();
         HttpResponse::new(404, headers, "")
     }
 }
