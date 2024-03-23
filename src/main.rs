@@ -61,7 +61,7 @@ impl TryFrom<&mut TcpStream> for HttpRequest {
             .unwrap_or(&"0".to_string())
             .parse::<usize>()
             .unwrap_or(0);
-        println!("Content lenght from request {content_lenght}");
+        println!("Content lenght from request {content_length}");
         let mut body = Vec::with_capacity(content_length);
         reader.read_exact(&mut body).context("Read body")?;
 
