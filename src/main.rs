@@ -47,7 +47,8 @@ impl TryFrom<&mut TcpStream> for HttpRequest {
                 break;
             }
 
-            let (name, content) = header.trim()
+            let (name, content) = header
+                .trim()
                 .split_once(": ")
                 .ok_or_else(|| anyhow!("Could not parse hader value {}", header))?;
             if name.len() > 0 && content.len() > 0 {
@@ -58,9 +59,9 @@ impl TryFrom<&mut TcpStream> for HttpRequest {
         let content_length = headers
             .get("Content-Length")
             .unwrap_or(&"0".to_string())
-            .trim()
             .parse::<usize>()
             .unwrap_or(0);
+        println!("Content lenght from request {content_lenght}");
         let mut body = Vec::with_capacity(content_length);
         reader.read_exact(&mut body).context("Read body")?;
 
