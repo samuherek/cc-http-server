@@ -61,8 +61,7 @@ impl TryFrom<&mut TcpStream> for HttpRequest {
             .unwrap_or(&"0".to_string())
             .parse::<usize>()
             .unwrap_or(0);
-        println!("Content lenght from request {content_length}");
-        let mut body = Vec::with_capacity(content_length);
+        let mut body = vec![0; content_length];
         reader.read_exact(&mut body).context("Read body")?;
 
         Ok(HttpRequest {
@@ -208,7 +207,6 @@ impl RequestHandler for FilePostHander {
         let file = std::fs::File::create(&path).and_then(|mut f| f.write_all(&request.body));
         match file {
             Ok(_) => {
-                println!("Wrote file to {}", path.display());
                 let headers: HashMap<String, String> =
                     [("Content-Type".to_string(), "text/plain".to_string())].into();
                 HttpResponse::new(201, headers, "")
