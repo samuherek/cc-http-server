@@ -47,7 +47,7 @@ impl TryFrom<&mut TcpStream> for HttpRequest {
                 break;
             }
 
-            let (name, content) = header
+            let (name, content) = header.trim()
                 .split_once(": ")
                 .ok_or_else(|| anyhow!("Could not parse hader value {}", header))?;
             if name.len() > 0 && content.len() > 0 {
