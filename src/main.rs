@@ -72,48 +72,6 @@ impl TryFrom<&mut TcpStream> for HttpRequest {
             body,
         })
     }
-
-    // fn try_from(stream: &mut TcpStream) -> Result<Self, Self::Error> {
-    //     let mut buffer = [0; 1024];
-    //     let bytes_read = stream.read(&mut buffer).context("read stream into data")?;
-    //     let request = String::from_utf8_lossy(&buffer[..bytes_read]);
-    //     let lines = request
-    //         .lines()
-    //         .map(|l| l.trim())
-    //         .filter(|l| !l.is_empty())
-    //         .collect::<Vec<_>>();
-    //     let [meta, header_lines @ ..] = lines.as_slice() else {
-    //         anyhow::bail!("Parsing lines as slice.");
-    //     };
-    //
-    //     let splits: Vec<_> = meta.split_whitespace().collect();
-    //     let method = splits
-    //         .get(0)
-    //         .ok_or_else(|| anyhow!("Could not parse method"))?;
-    //     let path = splits
-    //         .get(1)
-    //         .ok_or_else(|| anyhow!("Could not parse path"))?;
-    //     let version = splits
-    //         .get(2)
-    //         .ok_or_else(|| anyhow!("Could not parse version"))?;
-    //
-    //     let mut headers = HashMap::new();
-    //     for line in header_lines {
-    //         let (name, content) = line
-    //             .split_once(": ")
-    //             .ok_or_else(|| anyhow!("Could not parse hader value"))?;
-    //         if name.len() > 0 && content.len() > 0 {
-    //             headers.insert(name.to_string(), content.to_string());
-    //         }
-    //     }
-    //
-    //     Ok(HttpRequest {
-    //         path: path.to_string(),
-    //         method: method.to_string(),
-    //         _version: version.to_string(),
-    //         headers,
-    //     })
-    // }
 }
 
 struct HttpResponse {
