@@ -3,7 +3,7 @@ use anyhow::anyhow;
 use anyhow::Context;
 use std::collections::HashMap;
 use std::env;
-use std::io::{Read, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -11,27 +11,22 @@ use std::thread;
 
 struct HttpRequest {
     path: String,
-    _method: String,
+    method: String,
     _version: String,
     headers: HashMap<String, String>,
+    body: Vec<u8>,
 }
 
 impl TryFrom<&mut TcpStream> for HttpRequest {
     type Error = anyhow::Error;
-    fn try_from(stream: &mut TcpStream) -> Result<Self, Self::Error> {
-        let mut buffer = [0; 1024];
-        let bytes_read = stream.read(&mut buffer).context("read stream into data")?;
-        let request = String::from_utf8_lossy(&buffer[..bytes_read]);
-        let lines = request
-            .lines()
-            .map(|l| l.trim())
-            .filter(|l| !l.is_empty())
-            .collect::<Vec<_>>();
-        let [meta, header_lines @ ..] = lines.as_slice() else {
-            anyhow::bail!("Parsing lines as slice.");
-        };
 
-        let splits: Vec<_> = meta.split_whitespace().collect();
+    fn try_from(stream: &mut TcpStream) -> Result<Self, Self::Error> {
+        let mut reader = BufReader::new(stream);
+        let mut request_line = String::new();
+        reader
+            .read_line(&mut request_line)
+            .context("Read the request line.")?;
+        let splits: Vec<_> = request_line.split_whitespace().collect();
         let method = splits
             .get(0)
             .ok_or_else(|| anyhow!("Could not parse method"))?;
@@ -43,22 +38,82 @@ impl TryFrom<&mut TcpStream> for HttpRequest {
             .ok_or_else(|| anyhow!("Could not parse version"))?;
 
         let mut headers = HashMap::new();
-        for line in header_lines {
-            let (name, content) = line
+        let mut header = String::new();
+        loop {
+            header.clear();
+            reader.read_line(&mut header).context("Read header line")?;
+
+            if header == "\r\n" {
+                break;
+            }
+
+            let (name, content) = header
                 .split_once(": ")
-                .ok_or_else(|| anyhow!("Could not parse hader value"))?;
+                .ok_or_else(|| anyhow!("Could not parse hader value {}", header))?;
             if name.len() > 0 && content.len() > 0 {
                 headers.insert(name.to_string(), content.to_string());
             }
         }
 
+        let content_length = headers
+            .get("Content-Length")
+            .unwrap_or(&"0".to_string())
+            .trim()
+            .parse::<usize>()
+            .unwrap_or(0);
+        let mut body = Vec::with_capacity(content_length);
+        reader.read_exact(&mut body).context("Read body")?;
+
         Ok(HttpRequest {
             path: path.to_string(),
-            _method: method.to_string(),
+            method: method.to_string(),
             _version: version.to_string(),
             headers,
+            body,
         })
     }
+
+    // fn try_from(stream: &mut TcpStream) -> Result<Self, Self::Error> {
+    //     let mut buffer = [0; 1024];
+    //     let bytes_read = stream.read(&mut buffer).context("read stream into data")?;
+    //     let request = String::from_utf8_lossy(&buffer[..bytes_read]);
+    //     let lines = request
+    //         .lines()
+    //         .map(|l| l.trim())
+    //         .filter(|l| !l.is_empty())
+    //         .collect::<Vec<_>>();
+    //     let [meta, header_lines @ ..] = lines.as_slice() else {
+    //         anyhow::bail!("Parsing lines as slice.");
+    //     };
+    //
+    //     let splits: Vec<_> = meta.split_whitespace().collect();
+    //     let method = splits
+    //         .get(0)
+    //         .ok_or_else(|| anyhow!("Could not parse method"))?;
+    //     let path = splits
+    //         .get(1)
+    //         .ok_or_else(|| anyhow!("Could not parse path"))?;
+    //     let version = splits
+    //         .get(2)
+    //         .ok_or_else(|| anyhow!("Could not parse version"))?;
+    //
+    //     let mut headers = HashMap::new();
+    //     for line in header_lines {
+    //         let (name, content) = line
+    //             .split_once(": ")
+    //             .ok_or_else(|| anyhow!("Could not parse hader value"))?;
+    //         if name.len() > 0 && content.len() > 0 {
+    //             headers.insert(name.to_string(), content.to_string());
+    //         }
+    //     }
+    //
+    //     Ok(HttpRequest {
+    //         path: path.to_string(),
+    //         method: method.to_string(),
+    //         _version: version.to_string(),
+    //         headers,
+    //     })
+    // }
 }
 
 struct HttpResponse {
@@ -79,6 +134,7 @@ impl HttpResponse {
     fn to_string(&self) -> String {
         let status_message = match self.status_code {
             200 => "OK",
+            201 => "Created",
             404 => "Not Found",
             _ => "Internal error",
         };
@@ -150,9 +206,9 @@ impl RequestHandler for NotFoundHandler {
     }
 }
 
-struct FileHander;
+struct FileGetHander;
 
-impl RequestHandler for FileHander {
+impl RequestHandler for FileGetHander {
     fn handle_request(&self, request: &HttpRequest, dir: Arc<Option<String>>) -> HttpResponse {
         let file_name = request.path.strip_prefix("/files/").unwrap_or_default();
         let fallback = "".to_string();
@@ -181,6 +237,32 @@ impl RequestHandler for FileHander {
     }
 }
 
+struct FilePostHander;
+
+impl RequestHandler for FilePostHander {
+    fn handle_request(&self, request: &HttpRequest, dir: Arc<Option<String>>) -> HttpResponse {
+        let file_name = request.path.strip_prefix("/files/").unwrap_or_default();
+        let fallback = "".to_string();
+        let dir = dir.as_deref().unwrap_or(&fallback);
+        let path = PathBuf::from(dir).join(file_name);
+
+        let file = std::fs::File::create(&path).and_then(|mut f| f.write_all(&request.body));
+        match file {
+            Ok(_) => {
+                println!("Wrote file to {}", path.display());
+                let headers: HashMap<String, String> =
+                    [("Content-Type".to_string(), "text/plain".to_string())].into();
+                HttpResponse::new(201, headers, "")
+            }
+            Err(_) => {
+                let headers: HashMap<String, String> =
+                    [("Content-Type".to_string(), "text/plain".to_string())].into();
+                HttpResponse::new(500, headers, "")
+            }
+        }
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     let listener = TcpListener::bind("127.0.0.1:4221").unwrap();
     let args: Vec<_> = env::args().collect();
@@ -200,7 +282,13 @@ fn main() -> anyhow::Result<()> {
                 } else if request.path == "/user-agent" {
                     UserAgentHandler.handle_request(&request, dir_arc)
                 } else if request.path.starts_with("/files") {
-                    FileHander.handle_request(&request, dir_arc)
+                    if request.method == "GET" {
+                        FileGetHander.handle_request(&request, dir_arc)
+                    } else if request.method == "POST" {
+                        FilePostHander.handle_request(&request, dir_arc)
+                    } else {
+                        NotFoundHandler.handle_request(&request, dir_arc)
+                    }
                 } else if request.path == "/" {
                     SuccessHandler.handle_request(&request, dir_arc)
                 } else {
